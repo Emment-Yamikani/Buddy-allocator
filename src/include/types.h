@@ -5,9 +5,7 @@ typedef     short               i16;
 typedef     int                 i32;
 typedef     long                i64;
 typedef     long                isize;
-typedef     long                size_t;
 
-typedef     unsigned long       loff_t;
 typedef     unsigned char       uint8_t;
 typedef     unsigned short      uint16_t;
 typedef     unsigned int        uint32_t;
@@ -24,13 +22,6 @@ typedef     unsigned long       uintptr_t;
 typedef     float               f32;
 typedef     double              f64;
 
-typedef     int                 tid_t;
-typedef     int                 pid_t;
-
-typedef     int                 gid_t;
-typedef     int                 uid_t;
-typedef     int                 mode_t;
-
 typedef     union  pte_t        pte_t;
 
 typedef     struct spinlock_t   spinlock_t;
@@ -40,3 +31,5 @@ typedef     struct thread_t     thread_t;
 
 typedef     struct inode_t      inode_t;
 typedef     struct device_t     device_t;
+
+typedef     struct buddy_t      buddy_t;

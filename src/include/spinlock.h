@@ -7,7 +7,7 @@
 #include <stdatomic.h>
 #include <sys/unistd.h>
 
-typedef struct {
+typedef struct spinlock_t{
     uint8_t     guard;
     uint8_t     locked;
     pthread_t   thread;
