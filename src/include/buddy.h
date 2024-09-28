@@ -9,16 +9,16 @@
 #define BUDDY_FULL      2 // Fully filled buddy block
 
 typedef struct buddy_t {
-    buddy_t     *next;  // next block in this order of blocks.
-    u64         *bitmap;// bitmap of blocks in this block.
-    void        *pages; // array of pages in this block.
     u64         addr;   // base address of block.
-    u8          order;  // as an index of the base 2, and order-level.
-    u8          state;  // can be FULL, PARTIAL or FREE.
+    u64         order;  // as an index of the base 2, and order-level.
+    u64         state;  // can be FULL, PARTIAL or FREE.
+    buddy_t     *next;  // next block in this order of blocks.
+    void        *pages; // array of pages in this block.
+    u64         *bitmap;// bitmap of blocks in this block.
 } __packed buddy_t;
 
 #define buddy_addr(b)           ({ (b)->addr; })
-#define buddy_size(b)           ({ (1 << (b)->order) * PGSZ; })
+#define buddy_size(b)           ({ (1ull << (b)->order) * PGSZ; })
 #define buddy_end(b)            ({ buddy_addr(b) + buddy_size(b); })
 
 #define BUDDY_LEFT      1

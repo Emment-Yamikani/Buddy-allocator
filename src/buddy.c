@@ -16,7 +16,7 @@ static buddy_t *used_list[BUDDY_NORDER] = {NULL};
 // Utility function to dump information about a buddy block
 void dump_buddy(buddy_t *block) {
     assert(block, "No buddy block\n");
-    printf("block: %p, addr: %16p, order: %2d, next: %p, state: %1d\n",
+    printf("block: %p, addr: %16p, order: %2ld, next: %p, state: %ld\n",
            block, (void *)block->addr, block->order, block->next, block->state);
 }
 
@@ -33,9 +33,16 @@ static int get_order(usize size) {
 
 // Initialize a buddy block to the FREE state
 static void block_init(buddy_t *block) {
-    memset(block, 0, sizeof(*block));
-    block->state = BUDDY_FREE;
+    if (!block) return;
+
+    block->addr     = 0x0;  // Reset the address to a known value (you may want to initialize this elsewhere)
+    block->order    = 0;    // Reset the order
+    block->next     = NULL;
+    block->pages    = NULL;
+    block->bitmap   = NULL;
+    block->state    = BUDDY_FREE;
 }
+
 
 // Get a block from the pool of available blocks
 static int get_pool(buddy_t **ref) {
@@ -44,7 +51,6 @@ static int get_pool(buddy_t **ref) {
     buddy_t *block = pool;
     if (block) {
         pool = block->next;
-        block->next = NULL;
         block_init(block);
         *ref = block;
         return 0;
@@ -60,20 +66,22 @@ static int put_pool(buddy_t *block) {
     return 0;
 }
 
+static int put_list(buddy_t **list, buddy_t *block) {
+    if (!list || !block)
+        return -EINVAL;
+    block->next = list[block->order];
+    list[block->order] = block;
+    return 0;
+}
+
 // Add a block to the free list
 static int put_free(buddy_t *block) {
-    if (!block) return -EINVAL;
-    block->next = free_list[block->order];
-    free_list[block->order] = block;
-    return 0;
+    return put_list(free_list, block);
 }
 
 // Add a block to the used list
 static int put_used(buddy_t *block) {
-    if (!block) return -EINVAL;
-    block->next = used_list[block->order];
-    used_list[block->order] = block;
-    return 0;
+    return put_list(used_list, block);
 }
 
 // Find and remove a block from the used list by its address
@@ -106,44 +114,84 @@ static int find_used(uintptr_t addr, buddy_t **ref) {
 static int split_block(buddy_t *block) {
     if (!block) return -EINVAL;
 
+    // Ensure block order is within valid range
+    if (block->order <= 0 || block->order >= BUDDY_NORDER) {
+        printf("split_block: Invalid order %ld\n", block->order);
+        return -EINVAL;
+    }
+
     buddy_t *buddy = NULL;
     int err = get_pool(&buddy);
     if (err) return err;
 
+    // Reduce the order of the current block
     block->order -= 1;
-    buddy->order = block->order;
-    buddy->addr = block->addr + ((1 << block->order) * PGSZ);
+
+    // Initialize the buddy block with the next order
+    buddy->next     = NULL;
+    buddy->state    = BUDDY_FREE;
+    buddy->order    = block->order;
+    buddy->addr     = block->addr + buddy_size(block);  // Adjust the address for the buddy
 
     // Insert buddy into free list
-    return put_free(buddy);
+    err = put_free(buddy);
+    if (err) return err;
+
+    // printf("split_block: Split block into addr %p and buddy addr %p at order %ld\n", 
+        //    (void *)block->addr, (void *)buddy->addr, block->order);
+
+    return 0;
 }
 
 // Get a free block of a specific order
 static int get_free(int order, buddy_t **ref) {
     buddy_t *block = NULL;
 
-    if (order >= BUDDY_NORDER || !ref) return -EINVAL;
+    if (order >= BUDDY_NORDER || !ref) {
+        printf("get_free: Invalid order %d or null reference\n", order);
+        return -EINVAL;
+    }
 
     // Search for a block in the free list of the required order
+    // printf("get_free: Searching for free block of order %d\n", order);
     for (int i = order; i < BUDDY_NORDER; ++i) {
         block = free_list[i];
-        if (block) {
-            free_list[i] = block->next;
 
-            // Split the block until we reach the required order
-            while (block->order > order) {
+        // Check if a block was found in the free list at the current order level
+        if (block) {
+            // printf("get_free: Found block at order %ld (expected order %d)\n", block->order, order);
+            // dump_buddy(block);
+
+            // Remove block from the free list
+            free_list[i] = block->next;
+            // printf("get_free: Removed block from free list at order %d\n", i);
+            block->next = NULL;
+
+            // Split the block if needed to reach the required order
+            while (block->order > (u32)order) {
+                // printf("get_free: Splitting block of order %ld\n", block->order);
                 int err = split_block(block);
-                if (err) return err;
+                if (err) {
+                    // printf("get_free: Error splitting block: %d\n", err);
+                    return err;
+                }
+                // dump_buddy(block);  // Dump the block state after splitting
             }
 
-            block->next = NULL;
+            // Prepare the block for use
             block->state = BUDDY_FULL;
             *ref = block;
+
+            // printf("get_free: Allocated block %p with order %ld\n", (void *)block->addr, block->order);
             return put_used(block);
         }
     }
+
+    // If no block was found, return error
+    // printf("get_free: No free block available for order %d\n", order);
     return -ENOMEM;
 }
+
 
 // Allocate memory using buddy system
 void *buddy_alloc(usize size) {
